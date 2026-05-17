@@ -36,14 +36,46 @@ def _get_gmail_service():
         return None
 
     creds = None
+    # Try to load saved credentials
     if os.path.exists(TOKEN_PATH):
-        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+        except Exception:
+            # If the token file is malformed, ignore and force re-auth
+            creds = None
+
+    # If we have creds but no refresh_token (or it's missing), force re-auth so
+    # we obtain a refresh token. Google only returns refresh tokens on the
+    # first consent unless access_type='offline' and prompt='consent' are used.
+    if creds and (not getattr(creds, "refresh_token", None)):
+        try:
+            os.remove(TOKEN_PATH)
+        except Exception:
+            pass
+        creds = None
 
     if not creds or not creds.valid:
         flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_PATH, SCOPES)
-        creds = flow.run_local_server(port=8080)
-        with open(TOKEN_PATH, "w") as token_file:
-            token_file.write(creds.to_json())
+        # Request offline access and force the consent screen so a refresh token
+        # is returned and the app can refresh access tokens silently later.
+        creds = flow.run_local_server(
+            host="localhost",
+            port=8080,
+            access_type="offline",
+            include_granted_scopes="true",
+            prompt="consent",
+        )
+        # Persist the full credential JSON (should include refresh_token)
+        try:
+            with open(TOKEN_PATH, "w") as token_file:
+                token_file.write(creds.to_json())
+        except Exception:
+            # If we can't write the token, show an error to the user but
+            # continue with the ephemeral credentials.
+            messagebox.showwarning(
+                "Token Save Warning",
+                f"Unable to save token to {TOKEN_PATH}. The app will still try to send the email this session.",
+            )
 
     return build("gmail", "v1", credentials=creds)
 
