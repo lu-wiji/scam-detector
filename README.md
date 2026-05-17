@@ -39,6 +39,7 @@ Desktop app that scans SMS text (and SMS screenshots) for phishing and spam patt
 ## Gmail Report (Optional)
 To send reports by email, place your OAuth client file in the app folder:
 - client_secret.json (ignored by git)
+- token.json
 
 The app will create token.json on first sign-in.
 
@@ -52,4 +53,4 @@ python sms_phishing_detector.py
 - Regex rules and scores are defined at the top of sms_phishing_detector.py.
 
 ## License
-Add your preferred license here.
+MIT License. See LICENSE.
