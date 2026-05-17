@@ -52,5 +52,18 @@ python sms_phishing_detector.py
 - Camera capture requires OpenCV. If it is not installed, the button is disabled.
 - Regex rules and scores are defined at the top of sms_phishing_detector.py.
 
+## Project Structure
+Organized by responsibility so contributors can find code quickly:
+
+- sms_phishing_detector.py: entry point that launches the app
+- sms_detector/ (package)
+  - __init__.py: package entry
+  - ui.py: main UI and application flow
+  - rules.py: regex rules and scan logic
+  - ocr.py: image preprocessing and Tesseract OCR wrapper
+  - camera.py: camera capture UI and availability checks
+  - gmail_report.py: Gmail OAuth and email report sending
+  - config.py: shared paths, sender, and constants
+
 ## License
 MIT License. See LICENSE.
