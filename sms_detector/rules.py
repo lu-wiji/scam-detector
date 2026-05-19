@@ -5,7 +5,7 @@ RULES = [
     {
         "id": 1,
         "category": "Suspicious URL",
-        "pattern": r"https?://(?:[^\s]*\.)?(?:tk|ml|ga|cf|click|xyz|top|gq|pw|cc|bit\.ly|tinyurl|ow\.ly)[^\s]*",
+        "pattern": r"https?://(?:[^\s]*\.)?(?:tk|ml|ga|cf|click|xyz|top|gq|pw|cc|bit\.ly|tinyurl|site|online|icu|link)[^\s]*|https?://\d{1,3}(?:\.\d{1,3}){3}",
         "score": 35,
         "description": "Shortened or suspicious domain URL detected",
         "color": "#FF4C4C",
@@ -23,7 +23,7 @@ RULES = [
     {
         "id": 3,
         "category": "Bank / OTP Phishing",
-        "pattern": r"\b(OTP required|OTP|one[- ]time password|confirm your PIN|confirm your PIN|confirm your PIN|bank verification|credit card confirmation|unusual transaction detected|verify your bank details|payment failed|account suspended|refund available|claim your refund|transaction declined|verify payment method|tax refund available|pending transaction|unauthorized payment attempt|your balance is on hold|banking security alert)\b",
+        "pattern": r"\b(OTP required|OTP|one[- ]time password|confirm your PIN|bank verification|credit card confirmation|unusual transaction detected|verify your bank details|payment failed|account suspended|refund available|claim your refund|transaction declined|verify payment method|tax refund available|pending transaction|unauthorized payment attempt|your balance is on hold|banking security alert|account.{0,15}suspend|verify.{0,15}account|bank.{0,15}detail|credit card.{0,15}confirm)\b",
         "score": 40,
         "description": "Fake bank alert or OTP harvesting attempt",
         "color": "#FF4C4C",
@@ -182,17 +182,105 @@ RULES = [
         "color": "#FF8C00",
         "badge_bg": "#3D2A00",
     },
+    {
+        "id": 9,
+        "category": "Task/Job Scam",
+        "pattern": r"\b(part[- ]?time|work[- ]?from[- ]?home|wfh|daily (salary|earnings|income)|earn.{0,20}(php|pesos?|\d+)|receive.{0,10}php|earn.{0,10}pesos|extra income|flexible hours|looking for workers|job offer|hiring now)\b",
+        "score": 35,
+        "description": "Unsolicited job offer or 'earn money' task-based scam",
+        "color": "#FF4C4C",
+        "badge_bg": "#3D1A1A",
+    },
+    {
+        "id": 10,
+        "category": "Off-Platform Contact",
+        "pattern": r"\b(whatsapp|viber|telegram|tg|add.{0,10}(our )?hr|add.{0,10}me|contact.{0,10}hr|click.{0,10}wa\.me|telegram[:\s@]+[a-z0-9_]+)\b",
+        "score": 25,
+        "description": "Directing user to encrypted messaging apps to avoid detection",
+        "color": "#FF8C00",
+        "badge_bg": "#3D2A00",
+    },
+    {
+        "id": 11,
+        "category": "OTP / Verification Theft",
+        "pattern": r"\b(otp|one[- ]?time (code|password)|verification code|security code|passcode|pin|share.{0,10}code|confirm.{0,10}code|send.{0,10}code)\b",
+        "score": 40,
+        "description": "Attempts to steal verification or one-time access codes",
+        "color": "#FF4C4C",
+        "badge_bg": "#3D1A1A",
+    },
+    {
+        "id": 12,
+        "category": "Account Impersonation",
+        "pattern": r"\b(account.{0,20}(locked|suspended|restricted|disabled)|verify.{0,20}account|unusual login|security alert|login.{0,15}attempt|update.{0,15}(details|information))\b",
+        "score": 35,
+        "description": "Fake account security or login alert meant to pressure the victim",
+        "color": "#FF4C4C",
+        "badge_bg": "#3D1A1A",
+    },
+    {
+        "id": 13,
+        "category": "Delivery / Parcel Scam",
+        "pattern": r"\b(delivery failed|failed delivery|tracking number|package held|customs fee|pay.{0,15}fee|reschedule.{0,15}delivery|pickup.{0,15}package|address verification|courier|parcel|import tax)\b",
+        "score": 35,
+        "description": "Fake package, delivery, or customs message designed to induce action",
+        "color": "#FF8C00",
+        "badge_bg": "#3D2A00",
+    },
+    {
+        "id": 14,
+        "category": "Payment / Money Scam",
+        "pattern": r"\b(gift card|crypto|bitcoin|usdt|usdc|send money|wire transfer|refund|invoice|payment overdue|cash advance|loan approval|fee required)\b",
+        "score": 30,
+        "description": "Payment, refund, loan, or crypto-related scam language",
+        "color": "#FF8C00",
+        "badge_bg": "#3D2A00",
+    },
+    {
+        "id": 15,
+        "category": "Attachment / Malware Lure",
+        "pattern": r"\b(open.{0,15}attachment|download.{0,15}file|enable.{0,15}macros|install.{0,15}app|scan.{0,15}qr|apk|zip|docm|exe|click.{0,15}file)\b",
+        "score": 35,
+        "description": "Suspicious attachment, download, or malicious file instruction",
+        "color": "#FF4C4C",
+        "badge_bg": "#3D1A1A",
+    },
 ]
 
+def normalize_text(text: str) -> str:
+    """
+    Standardizes text to defeat basic obfuscation.
+    """
+    # 1. Lowercase
+    normalized = text.lower()
+    
+    # 2. Homoglyph replacement (common visual swaps)
+    homoglyphs = {
+        '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', 
+        '7': 't', '8': 'b', '@': 'a', '$': 's', '!': 'i'
+    }
+    for char, replacement in homoglyphs.items():
+        normalized = normalized.replace(char, replacement)
+    
+    # 3. Normalize separator noise between letters without collapsing words.
+    # Keeping spaces allows the regex rules to keep working on natural phrases.
+    normalized = re.sub(r'(?<=[a-z])[.\-_*]+(?=[a-z])', ' ', normalized)
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    
+    return normalized
 
 def scan_message(text: str) -> dict:
-    """Run all regex rules and return a result dict."""
     results = []
     total_score = 0
-    text_lower = text.lower()
-
+    
+    # 1. Normalize the text for better detection
+    clean_text = normalize_text(text)
+    
     for rule in RULES:
-        matches = re.findall(rule["pattern"], text_lower, re.IGNORECASE)
+        # Use clean text for keywords, raw text for URLs/Numbers
+        target = text if rule["category"] in ["Suspicious URL", "Suspicious Phone Number"] else clean_text
+        matches = re.findall(rule["pattern"], target, re.IGNORECASE)
+        
         if matches:
             unique = list(set(m if isinstance(m, str) else m[0] for m in matches))
             results.append({
@@ -207,21 +295,23 @@ def scan_message(text: str) -> dict:
 
     total_score = min(total_score, 100)
 
-    if total_score >= 50:
+    # 2. Assign Risk Levels (Ensure these match your UI requirements)
+    if total_score >= 60:
         risk, risk_color, risk_bg, risk_icon = "HIGH RISK", "#FF4C4C", "#2A0A0A", "🔴"
-    elif total_score >= 25:
-        risk, risk_color, risk_bg, risk_icon = "MEDIUM RISK", "#FF8C00", "#2A1A00", "🟡"
+    elif total_score >= 30:
+        risk, risk_color, risk_bg, risk_icon = "MEDIUM RISK", "#FF8C00", "#2A1A00", "🟠"
     elif total_score > 0:
         risk, risk_color, risk_bg, risk_icon = "LOW RISK", "#FFD700", "#2A2600", "🟡"
     else:
         risk, risk_color, risk_bg, risk_icon = "SAFE", "#00C48C", "#002A1E", "🟢"
 
+    # 3. Final Dictionary (Verify keys: risk, risk_color, findings)
     return {
         "score": total_score,
         "risk": risk,
-        "risk_color": risk_color,
-        "risk_bg": risk_bg,
         "risk_icon": risk_icon,
+        "risk_color": risk_color,  # This fixes the KeyError
+        "risk_bg": risk_bg,
         "findings": results,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "message_preview": text[:80] + ("..." if len(text) > 80 else ""),

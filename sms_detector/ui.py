@@ -25,6 +25,11 @@ class SMSDetectorApp(ctk.CTk):
         ctk.set_default_color_theme("blue")
         self.last_result = None
         self.recipient_var = ctk.StringVar(value=GMAIL_SENDER)
+        self.chat_message_text = ""
+        self.chat_result = None
+        self.chat_questions = []
+        self.chat_question_index = 0
+        self.chat_answers = []
         self._build_ui()
 
     # ── Layout ──────────────────────────────
@@ -65,7 +70,7 @@ class SMSDetectorApp(ctk.CTk):
     # ── Scanner Tab ─────────────────────────
     def _build_scanner_tab(self, parent):
         parent.grid_columnconfigure(0, weight=1)
-        parent.grid_rowconfigure(1, weight=1)
+        parent.grid_rowconfigure(2, weight=1)
 
         input_frame = ctk.CTkFrame(parent, fg_color="#111827", corner_radius=10)
         input_frame.grid(row=0, column=0, sticky="ew", padx=4, pady=(4, 6))
@@ -73,10 +78,17 @@ class SMSDetectorApp(ctk.CTk):
 
         ctk.CTkLabel(
             input_frame,
-            text="Paste SMS Message Below:",
+            text="Security Assistant Chat",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#00C48C",
+        ).grid(row=0, column=0, sticky="w", padx=14, pady=(10, 2))
+
+        ctk.CTkLabel(
+            input_frame,
+            text="Paste a message and the assistant will question it like a senior security analyst.",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color="#9CA3AF",
-        ).grid(row=0, column=0, sticky="w", padx=14, pady=(10, 2))
+        ).grid(row=1, column=0, sticky="w", padx=14, pady=(0, 6))
 
         self.sms_input = ctk.CTkTextbox(
             input_frame,
@@ -87,15 +99,15 @@ class SMSDetectorApp(ctk.CTk):
             border_color="#1F2937",
             border_width=1,
         )
-        self.sms_input.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 4))
+        self.sms_input.grid(row=2, column=0, sticky="ew", padx=14, pady=(0, 4))
 
         btn_row = ctk.CTkFrame(input_frame, fg_color="transparent")
-        btn_row.grid(row=2, column=0, sticky="ew", padx=14, pady=(0, 10))
+        btn_row.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 10))
         btn_row.grid_columnconfigure(1, weight=1)
 
         ctk.CTkButton(
             btn_row,
-            text="⚡  SCAN MESSAGE",
+            text="⚡  START REVIEW",
             command=self._run_text_scan,
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color="#00C48C",
@@ -146,12 +158,86 @@ class SMSDetectorApp(ctk.CTk):
             width=120,
         ).grid(row=0, column=3, sticky="e", padx=(0, 8))
 
-        self.text_results_frame = ctk.CTkScrollableFrame(
+        self.initial_read_frame = ctk.CTkFrame(parent, fg_color="#0D1B2A", corner_radius=10)
+        self.initial_read_frame.grid(row=1, column=0, sticky="ew", padx=4, pady=(0, 4))
+        self.initial_read_frame.grid_columnconfigure(0, weight=1)
+        self._clear_initial_read()
+
+        self.chat_status = ctk.CTkLabel(
+            parent,
+            text="The assistant will explain its analysis and ask follow-up questions here.",
+            font=ctk.CTkFont(size=12),
+            text_color="#9CA3AF",
+        )
+        self.chat_status.grid(row=2, column=0, sticky="w", padx=8, pady=(0, 4))
+
+        self.chat_history_frame = ctk.CTkScrollableFrame(
             parent, fg_color="#0D1B2A", corner_radius=10
         )
-        self.text_results_frame.grid(row=1, column=0, sticky="nsew", padx=4, pady=(0, 4))
-        self.text_results_frame.grid_columnconfigure(0, weight=1)
-        self._show_placeholder(self.text_results_frame)
+        self.chat_history_frame.grid(row=3, column=0, sticky="nsew", padx=4, pady=(0, 4))
+        self.chat_history_frame.grid_columnconfigure(0, weight=1)
+        self._render_chat_history()
+
+        answer_bar = ctk.CTkFrame(parent, fg_color="#111827", corner_radius=10)
+        answer_bar.grid(row=4, column=0, sticky="ew", padx=4, pady=(0, 4))
+        answer_bar.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            answer_bar,
+            text="Answer the assistant",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#9CA3AF",
+        ).grid(row=0, column=0, sticky="w", padx=14, pady=(10, 4))
+
+        answer_buttons = ctk.CTkFrame(answer_bar, fg_color="transparent")
+        answer_buttons.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 12))
+        answer_buttons.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        self.yes_button = ctk.CTkButton(
+            answer_buttons,
+            text="Yes",
+            command=lambda: self._handle_chat_answer("yes"),
+            fg_color="#1D4ED8",
+            hover_color="#1E40AF",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            height=36,
+        )
+        self.yes_button.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+
+        self.no_button = ctk.CTkButton(
+            answer_buttons,
+            text="No",
+            command=lambda: self._handle_chat_answer("no"),
+            fg_color="#374151",
+            hover_color="#4B5563",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            height=36,
+        )
+        self.no_button.grid(row=0, column=1, padx=(0, 8), sticky="ew")
+
+        self.unsure_button = ctk.CTkButton(
+            answer_buttons,
+            text="Unsure",
+            command=lambda: self._handle_chat_answer("unsure"),
+            fg_color="#7C3AED",
+            hover_color="#6D28D9",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            height=36,
+        )
+        self.unsure_button.grid(row=0, column=2, padx=(0, 8), sticky="ew")
+
+        self.reset_button = ctk.CTkButton(
+            answer_buttons,
+            text="Reset",
+            command=self._reset_security_chat,
+            fg_color="#1F2937",
+            hover_color="#374151",
+            font=ctk.CTkFont(size=12),
+            height=36,
+        )
+        self.reset_button.grid(row=0, column=3, sticky="ew")
+
+        self._set_chat_answer_state("disabled")
 
     # ── Image Scan Tab ───────────────────────
     def _build_image_tab(self, parent):
@@ -382,7 +468,7 @@ class SMSDetectorApp(ctk.CTk):
 
         ctk.CTkLabel(
             banner,
-            text=f"{result['risk_icon']}  {result['risk']}",
+            text=f"{result.get('risk_icon', '')}  {result['risk']}",
             font=ctk.CTkFont(size=22, weight="bold"),
             text_color=result["risk_color"],
         ).pack(side="left", padx=20, pady=14)
@@ -481,12 +567,11 @@ class SMSDetectorApp(ctk.CTk):
         result = scan_message(text)
         self.last_result = result
         SCAN_HISTORY.append(result)
-        self._refresh_history()
-        self._display_results(result, self.text_results_frame)
+        self._start_security_chat(text=text, result=result)
 
     def _clear_text(self):
         self.sms_input.delete("1.0", "end")
-        self._show_placeholder(self.text_results_frame)
+        self._reset_security_chat()
 
     def _send_latest_report(self):
         if self.last_result is None:
@@ -637,7 +722,7 @@ class SMSDetectorApp(ctk.CTk):
 
             ctk.CTkLabel(
                 row,
-                text=f"{entry['risk_icon']} {entry['risk']}",
+                text=f"{entry.get('risk_icon', '')} {entry['risk']}",
                 font=ctk.CTkFont(size=12, weight="bold"),
                 text_color=entry["risk_color"],
                 width=120,
@@ -656,3 +741,245 @@ class SMSDetectorApp(ctk.CTk):
                 font=ctk.CTkFont(size=10),
                 text_color="#374151",
             ).pack(side="right", padx=12)
+
+    def _reset_security_chat(self):
+        self.chat_message_text = ""
+        self.chat_result = None
+        self.chat_questions = []
+        self.chat_question_index = 0
+        self.chat_answers = []
+        self.chat_status.configure(
+            text="The assistant will explain its analysis and ask follow-up questions here.",
+            text_color="#9CA3AF",
+        )
+        self._clear_initial_read()
+        self._render_chat_history()
+        self._set_chat_answer_state("disabled")
+
+    def _start_security_chat(self, text=None, result=None):
+        if text is None:
+            text = self.sms_input.get("1.0", "end").strip()
+        if not text:
+            messagebox.showwarning("Empty Input", "Paste a message to review first.")
+            return
+
+        self.chat_message_text = text
+        self.chat_result = result or scan_message(text)
+        self.chat_answers = []
+        self.chat_questions = self._build_chat_questions(text, self.chat_result)
+        self.chat_question_index = 0
+
+        self._render_initial_read(self.chat_result)
+        self._render_chat_history()
+        self._append_chat_message("user", text)
+        self._append_chat_message(
+            "assistant",
+            self._build_chat_summary(self.chat_result),
+        )
+
+        if self.chat_questions:
+            self._append_chat_message("assistant", self.chat_questions[0])
+            self._set_chat_answer_state("normal")
+            self.chat_status.configure(text="Review started. Answer the follow-up questions below.", text_color="#00C48C")
+        else:
+            self._append_chat_message(
+                "assistant",
+                "I do not need more context for this one. The current evidence is enough to classify it.",
+            )
+            self._append_chat_message("assistant", self._build_chat_final_assessment())
+            self._set_chat_answer_state("disabled")
+            self.chat_status.configure(text="Review complete.", text_color="#00C48C")
+
+    def _clear_initial_read(self):
+        for widget in self.initial_read_frame.winfo_children():
+            widget.destroy()
+        ctk.CTkLabel(
+            self.initial_read_frame,
+            text="Initial read will appear here after a review starts.",
+            font=ctk.CTkFont(size=12),
+            text_color="#374151",
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=12)
+
+    def _render_initial_read(self, result: dict):
+        for widget in self.initial_read_frame.winfo_children():
+            widget.destroy()
+
+        banner = ctk.CTkFrame(
+            self.initial_read_frame,
+            fg_color=result["risk_bg"],
+            border_color=result["risk_color"],
+            border_width=2,
+            corner_radius=10,
+        )
+        banner.pack(fill="x", padx=4, pady=4)
+        banner.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            banner,
+            text=f"{result.get('risk_icon', '')}  {result['risk']}",
+            font=ctk.CTkFont(size=22, weight="bold"),
+            text_color=result["risk_color"],
+        ).grid(row=0, column=0, padx=18, pady=14, sticky="w")
+
+        summary = self._build_chat_summary(result)
+        ctk.CTkLabel(
+            banner,
+            text=summary,
+            font=ctk.CTkFont(size=12),
+            text_color="#E5E7EB",
+            wraplength=650,
+            justify="left",
+            anchor="w",
+        ).grid(row=0, column=1, padx=(0, 16), pady=14, sticky="w")
+
+        ctk.CTkLabel(
+            banner,
+            text=f"Threat Score: {result['score']}/100",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=result["risk_color"],
+        ).grid(row=0, column=2, padx=16, pady=14, sticky="e")
+
+    def _handle_chat_answer(self, answer: str):
+        if not self.chat_result or not self.chat_questions:
+            messagebox.showinfo("Start Review", "Start a review first.")
+            return
+
+        current_question = self.chat_questions[self.chat_question_index]
+        self.chat_answers.append({"question": current_question, "answer": answer})
+        self._append_chat_message("user", answer.capitalize())
+
+        self.chat_question_index += 1
+        if self.chat_question_index < len(self.chat_questions):
+            next_question = self.chat_questions[self.chat_question_index]
+            self._append_chat_message("assistant", next_question)
+            self.chat_status.configure(
+                text=f"Question {self.chat_question_index + 1} of {len(self.chat_questions)}.",
+                text_color="#00C48C",
+            )
+            return
+
+        final_message = self._build_chat_final_assessment()
+        self._append_chat_message("assistant", final_message)
+        self._set_chat_answer_state("disabled")
+        self.chat_status.configure(text="Review complete.", text_color="#00C48C")
+
+    def _build_chat_questions(self, text: str, result: dict):
+        questions = []
+        lower_text = text.lower()
+        hit_categories = {finding["category"] for finding in result["findings"]}
+
+        if any(keyword in lower_text for keyword in ["otp", "password", "pin", "code"]):
+            questions.append("Did the sender ask you to share an OTP, password, PIN, or verification code?")
+        if any(keyword in lower_text for keyword in ["telegram", "whatsapp", "viber", "signal", "hr", "add"]):
+            questions.append("Did the message push you to continue the conversation on Telegram, WhatsApp, or another external app?")
+        if any(keyword in lower_text for keyword in ["link", "click", "download", "attachment", "file", "macros"]):
+            questions.append("Did it ask you to click a link, download a file, open an attachment, or enable macros?")
+        if any(keyword in lower_text for keyword in ["urgent", "immediately", "now", "locked", "suspended", "limited time", "within 24"]):
+            questions.append("Did it use urgency or pressure to make you act immediately?")
+        if any(keyword in lower_text for keyword in ["job", "hiring", "part-time", "earn", "salary", "income", "gcash", "maya", "crypto", "gift card"]):
+            questions.append("Did it promise easy money, a job offer, payment, or an upfront fee?")
+
+        if not questions:
+            if result["score"] >= 30:
+                questions.append("Did anything in the message feel unusual, urgent, or out of context for this sender?")
+            else:
+                questions.append("Do you know this sender, and were you expecting this message?")
+
+        if "OTP / Verification Theft" in hit_categories or "Account Impersonation" in hit_categories:
+            questions.append("Does the message mention logging in, verifying, or recovering an account you did not request?")
+
+        seen = set()
+        ordered_questions = []
+        for question in questions:
+            if question not in seen:
+                seen.add(question)
+                ordered_questions.append(question)
+        return ordered_questions[:4]
+
+    def _build_chat_summary(self, result: dict) -> str:
+        if result["risk"] == "SAFE":
+            return "Initial read: this looks safe, but I still want to confirm the sender and intent before I clear it."
+
+        findings = ", ".join(finding["category"] for finding in result["findings"][:4])
+        return (
+            f"Initial read: {result['risk']} with score {result['score']}/100. "
+            f"The strongest signals right now are {findings or 'no clear signals yet'}. "
+            "I will ask a few context questions to confirm whether this is phishing, spam, or a legitimate message."
+        )
+
+    def _build_chat_final_assessment(self) -> str:
+        yes_count = sum(1 for item in self.chat_answers if item["answer"] == "yes")
+        unsure_count = sum(1 for item in self.chat_answers if item["answer"] == "unsure")
+
+        if not self.chat_result:
+            return "I do not have a message to assess yet."
+
+        findings = ", ".join(finding["category"] for finding in self.chat_result["findings"][:4])
+
+        if yes_count >= 2 or self.chat_result["score"] >= 60:
+            verdict = "High confidence phishing or scam"
+        elif yes_count == 1 or self.chat_result["score"] >= 30:
+            verdict = "Likely scam or suspicious"
+        elif unsure_count > 0:
+            verdict = "Needs caution and a manual review"
+        else:
+            verdict = "Low risk, but still worth verifying the sender"
+
+        return (
+            f"Final assessment: {verdict}. Based on the message content and your answers, I would treat this as "
+            f"unsafe unless the sender and request can be independently verified. Key rule hits: {findings or 'none'}."
+        )
+
+    def _render_chat_history(self):
+        for widget in self.chat_history_frame.winfo_children():
+            widget.destroy()
+
+        ctk.CTkLabel(
+            self.chat_history_frame,
+            text="Conversation",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="#E5E7EB",
+        ).pack(anchor="w", padx=8, pady=(8, 12))
+
+        if not self.chat_message_text:
+            ctk.CTkLabel(
+                self.chat_history_frame,
+                text="The assistant will guide the review here.",
+                font=ctk.CTkFont(size=13),
+                text_color="#374151",
+            ).pack(pady=30)
+            return
+
+    def _append_chat_message(self, role: str, text: str):
+        bubble = ctk.CTkFrame(
+            self.chat_history_frame,
+            fg_color="#0D1117" if role == "assistant" else "#111827",
+            border_color="#00C48C" if role == "assistant" else "#1F2937",
+            border_width=1,
+            corner_radius=10,
+        )
+        bubble.pack(fill="x", padx=6, pady=4)
+        bubble.grid_columnconfigure(0, weight=1)
+
+        label = "Security Assistant" if role == "assistant" else "You"
+        ctk.CTkLabel(
+            bubble,
+            text=label,
+            font=ctk.CTkFont(size=10, weight="bold"),
+            text_color="#00C48C" if role == "assistant" else "#9CA3AF",
+        ).grid(row=0, column=0, sticky="w", padx=10, pady=(8, 2))
+
+        ctk.CTkLabel(
+            bubble,
+            text=text,
+            font=ctk.CTkFont(size=12),
+            text_color="#E5E7EB",
+            wraplength=760,
+            justify="left",
+            anchor="w",
+        ).grid(row=1, column=0, sticky="w", padx=10, pady=(0, 10))
+
+    def _set_chat_answer_state(self, state: str):
+        for button in (self.yes_button, self.no_button, self.unsure_button):
+            button.configure(state=state)

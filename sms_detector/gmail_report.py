@@ -107,7 +107,7 @@ def _build_email_html(result: dict) -> str:
 
       <div style=\"border:1px solid #E5E7EB;border-radius:8px;padding:12px;margin-bottom:16px;\">
         <div style=\"font-size:18px;font-weight:700;color:{result['risk_color']};\">
-          {result['risk_icon']} {result['risk']}
+                    {result.get('risk_icon', '')} {result['risk']}
         </div>
         <div style=\"margin-top:6px;color:#374151;\">Threat Score: <b>{result['score']}/100</b></div>
       </div>
