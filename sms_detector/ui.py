@@ -567,6 +567,7 @@ class SMSDetectorApp(ctk.CTk):
         result = scan_message(text)
         self.last_result = result
         SCAN_HISTORY.append(result)
+        self._refresh_history()
         self._start_security_chat(text=text, result=result)
 
     def _clear_text(self):
