@@ -788,6 +788,7 @@ class SMSDetectorApp(ctk.CTk):
                 "I do not need more context for this one. The current evidence is enough to classify it.",
             )
             self._append_chat_message("assistant", self._build_chat_final_assessment())
+            self._render_initial_read(self.chat_result, final_state=self._get_chat_final_assessment_state())
             self._set_chat_answer_state("disabled")
             self.chat_status.configure(text="Review complete.", text_color="#00C48C")
 
@@ -802,31 +803,46 @@ class SMSDetectorApp(ctk.CTk):
             anchor="w",
         ).pack(anchor="w", padx=12, pady=12)
 
-    def _render_initial_read(self, result: dict):
+    def _render_initial_read(self, result: dict, final_state: dict = None):
         for widget in self.initial_read_frame.winfo_children():
             widget.destroy()
 
+        if final_state:
+            active_state = {**final_state}
+        else:
+            active_state = {
+                "risk": result["risk"],
+                "risk_color": result["risk_color"],
+                "risk_bg": result["risk_bg"],
+                "risk_icon": result.get("risk_icon", ""),
+                "summary": self._build_chat_summary(result),
+                "score": result["score"],
+            }
+
         banner = ctk.CTkFrame(
             self.initial_read_frame,
-            fg_color=result["risk_bg"],
-            border_color=result["risk_color"],
+            fg_color=active_state["risk_bg"],
+            border_color=active_state["risk_color"],
             border_width=2,
             corner_radius=10,
         )
         banner.pack(fill="x", padx=4, pady=4)
         banner.grid_columnconfigure(1, weight=1)
 
+        label_text = f"{active_state['risk_icon']}  {active_state['risk']}"
+        if final_state:
+            label_text = f"{label_text} — Final Assessment"
+
         ctk.CTkLabel(
             banner,
-            text=f"{result.get('risk_icon', '')}  {result['risk']}",
+            text=label_text,
             font=ctk.CTkFont(size=22, weight="bold"),
-            text_color=result["risk_color"],
+            text_color=active_state["risk_color"],
         ).grid(row=0, column=0, padx=18, pady=14, sticky="w")
 
-        summary = self._build_chat_summary(result)
         ctk.CTkLabel(
             banner,
-            text=summary,
+            text=active_state["summary"],
             font=ctk.CTkFont(size=12),
             text_color="#E5E7EB",
             wraplength=650,
@@ -836,9 +852,9 @@ class SMSDetectorApp(ctk.CTk):
 
         ctk.CTkLabel(
             banner,
-            text=f"Threat Score: {result['score']}/100",
+            text=f"Threat Score: {active_state['score']}/100",
             font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=result["risk_color"],
+            text_color=active_state["risk_color"],
         ).grid(row=0, column=2, padx=16, pady=14, sticky="e")
 
     def _handle_chat_answer(self, answer: str):
@@ -862,6 +878,7 @@ class SMSDetectorApp(ctk.CTk):
 
         final_message = self._build_chat_final_assessment()
         self._append_chat_message("assistant", final_message)
+        self._render_initial_read(self.chat_result, final_state=self._get_chat_final_assessment_state())
         self._set_chat_answer_state("disabled")
         self.chat_status.configure(text="Review complete.", text_color="#00C48C")
 
@@ -908,6 +925,47 @@ class SMSDetectorApp(ctk.CTk):
             f"The strongest signals right now are {findings or 'no clear signals yet'}. "
             "I will ask a few context questions to confirm whether this is phishing, spam, or a legitimate message."
         )
+
+    def _get_chat_final_assessment_state(self) -> dict:
+        yes_count = sum(1 for item in self.chat_answers if item["answer"] == "yes")
+        unsure_count = sum(1 for item in self.chat_answers if item["answer"] == "unsure")
+        score = self.chat_result["score"] if self.chat_result else 0
+
+        if yes_count >= 2 or score >= 60:
+            return {
+                "risk": "HIGH RISK",
+                "risk_color": "#FF4C4C",
+                "risk_bg": "#2A0A0A",
+                "risk_icon": "🔴",
+                "summary": "High confidence scam.",
+                "score": 90,
+            }
+        if yes_count == 1 or score >= 30:
+            return {
+                "risk": "MEDIUM RISK",
+                "risk_color": "#FF8C00",
+                "risk_bg": "#2A1A00",
+                "risk_icon": "🟠",
+                "summary": "Likely scam or suspicious.",
+                "score": 65,
+            }
+        if unsure_count > 0:
+            return {
+                "risk": "LOW RISK",
+                "risk_color": "#FFD700",
+                "risk_bg": "#2A2600",
+                "risk_icon": "🟡",
+                "summary": "Caution advised; review manually.",
+                "score": 35,
+            }
+        return {
+            "risk": "LOW RISK",
+            "risk_color": "#FFD700",
+            "risk_bg": "#2A2600",
+            "risk_icon": "🟡",
+            "summary": "Low risk, verify sender and intent.",
+            "score": 20,
+        }
 
     def _build_chat_final_assessment(self) -> str:
         yes_count = sum(1 for item in self.chat_answers if item["answer"] == "yes")
